@@ -1,0 +1,35 @@
+name: Build & Deploy Web to itch.io
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build for Web & Deploy to itch.io
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Configure
+        run: emcmake cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Deploy to itch.io
+        uses: robpc/itchio-upload-action@v1
+        with:
+          path: build/bin/
+          project: tycro-dev/dramatic-checkers
+          channel: web
+          api-key: ${{ secrets.BUTLER_API_KEY }}
