@@ -1,4 +1,4 @@
-name: Build & Deploy Web to itch.io
+name: Build & Deploy to itch.io
 
 on:
   push:
@@ -7,21 +7,36 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    name: Build for Web & Deploy to itch.io
+  build-linux:
+    name: Build for Linux & Deploy to itch.io
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+      - name: Install SDL3 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git make pkg-config cmake ninja-build gnome-desktop-testing \
+            gcc-14 g++-14 \
+            libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
+            libthai-dev libusb-1.0-0-dev
+
+      - name: Make GCC 14 the default compiler
+        run: |
+          sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-14 100
+          sudo update-alternatives --set cc  /usr/bin/gcc-14
+          sudo update-alternatives --set c++ /usr/bin/g++-14
 
       - name: Configure
-        run: emcmake cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --parallel
@@ -31,5 +46,48 @@ jobs:
         with:
           path: build/bin/
           project: tycro-dev/dramatic-checkers
-          channel: web
+          channel: linux
+          api-key: ${{ secrets.BUTLER_API_KEY }}
+
+  build-windows:
+    name: Build for Windows (MSVC)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: build/bin/
+
+  deploy-windows:
+    name: Deploy Windows to itch.io
+    runs-on: ubuntu-latest
+    needs: build-windows
+    steps:
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: build/bin/
+
+      - name: Deploy to itch.io
+        uses: robpc/itchio-upload-action@v1
+        with:
+          path: build/bin/
+          project: tycro-dev/dramatic-checkers
+          channel: windows
           api-key: ${{ secrets.BUTLER_API_KEY }}
